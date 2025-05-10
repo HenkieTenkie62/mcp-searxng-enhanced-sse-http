@@ -89,7 +89,8 @@ The following is the **recommended default configuration** for this server withi
 If you prefer to run the server directly using Python without Docker, follow these steps:
 
 **1. Python Installation:**
-   - Ensure you have Python 3.11 or newer installed. You can download it from [python.org](https://www.python.org/downloads/).
+   - This server requires **Python 3.9 or newer**. Python 3.11 (as used in the Docker image) is recommended.
+   - You can download Python from [python.org](https://www.python.org/downloads/).
 
 **2. Clone the Repository:**
    - Get the code from GitHub:
