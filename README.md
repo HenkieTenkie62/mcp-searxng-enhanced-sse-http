@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/overtlids-mcp-searxng-enhanced-badge.png)](https://mseep.ai/app/overtlids-mcp-searxng-enhanced)
+
 # MCP SearXNG Enhanced Server
 
 A Model Context Protocol (MCP) server for category-aware web search, website scraping, and date/time tools. Designed for seamless integration with SearXNG and modern MCP clients.
