@@ -893,8 +893,9 @@ async def main():
                 }
             elif method == "tools/list":
                 response["result"] = {
-                    "tools": {
-                        "search_web": {
+                    "tools": [
+                        {
+                            "name": "search_web",
                             "description": "Search the web for various categories (general, images, videos, files, map, social media, news, it, science). Scrapes text for web categories, returns specific data for others. Provides citations. Allows optional filtering.",
                             "inputSchema": {
                                 "type": "object",
@@ -908,7 +909,8 @@ async def main():
                                 "required": ["query"],
                             },
                         },
-                        "get_website": {
+                        {
+                            "name": "get_website",
                             "description": "Scrape content from web pages (using Trafilatura, converting Reddit to old.reddit). Caches results and provides citations.",
                             "inputSchema": {
                                 "type": "object",
@@ -918,11 +920,12 @@ async def main():
                                 "required": ["url"],
                             },
                         },
-                        "get_current_datetime": {
+                        {
+                            "name": "get_current_datetime",
                             "description": "Get the current date and time in the configured timezone.",
                             "inputSchema": {"type": "object", "properties": {}},
                         },
-                    }
+                    ]
                 }
             elif method == "tools/call":
                 tool_name = params.get("name")
