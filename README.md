@@ -6,6 +6,7 @@ A Model Context Protocol (MCP) server for category-aware web search, website scr
 
 - 🔍 SearXNG-powered web search with category support (general, images, videos, files, map, social media)
 - 📄 Website content scraping with citation metadata and automatic Reddit URL conversion
+- 📜 Intial PDF reading support with a conversion to Markdown using [PyMuPDF/PyMuPDF4LLM](https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/index.html#pymupdf4llm)
 - 💾 In-memory caching with automatic freshness validation
 - 🚦 Domain-based rate limiting to prevent service abuse
 - 🕒 Timezone-aware date/time tool
@@ -120,7 +121,7 @@ If you prefer to run the server directly using Python without Docker, follow the
      ```bash
      pip install -r requirements.txt
      ```
-     Key dependencies include `httpx`, `BeautifulSoup4`, `pydantic`, `trafilatura`, `python-dateutil`, `cachetools`, and `zoneinfo`.
+     Key dependencies include `httpx`, `BeautifulSoup4`, `pydantic`, `trafilatura`, `python-dateutil`, `cachetools`, `zoneinfo`, `filetype`, `pymupdf` and `pymupdf4llm`.
 
 **5. Ensure SearXNG is Accessible:**
    - You still need a running SearXNG instance. Make sure you have its API base URL (e.g., `http://127.0.0.1:8080/search`).
