@@ -897,11 +897,11 @@ async def main():
             if method == "initialize":
                 response["result"] = {
                     "protocolVersion": "2024-11-05",
-                    "serverInfo": {"name": "mcp-searxng-enhanced", "version": "1.0.0"},
+                    "serverInfo": {"name": "mcp-searxng-enhanced", "version": "1.1.0"},
                     "capabilities": {
                         "tools": {
                             "search_web": {
-                                "description": "Search the web for various categories (general, images, videos, files, map, social media, news, it, science). Scrapes text for web categories, returns specific data for others. Provides citations. Allows optional filtering.",
+                                "description": "Search the web for various categories (general, images, videos, files, map, social media, news, it, science). Scrapes text for web categories, returns specific data for others. Provides citations. Allows optional filtering. Is able to read PDF files and convert to Markdown.",
                                 "inputSchema": {
                                     "type": "object",
                                     "properties": {
@@ -915,7 +915,7 @@ async def main():
                                 },
                             },
                             "get_website": {
-                                "description": "Scrape content from web pages (using Trafilatura, converting Reddit to old.reddit). Caches results and provides citations.",
+                                "description": "Scrape content from web pages (using Trafilatura, converting Reddit to old.reddit). Caches results and provides citations. Is able to read PDF files and convert these to Markdown.",
                                 "inputSchema": {
                                     "type": "object",
                                     "properties": {
@@ -936,7 +936,7 @@ async def main():
                     "tools": [
                         {
                             "name": "search_web",
-                            "description": "Search the web for various categories (general, images, videos, files, map, social media, news, it, science). Scrapes text for web categories, returns specific data for others. Provides citations. Allows optional filtering.",
+                            "description": "Search the web for various categories (general, images, videos, files, map, social media, news, it, science). Scrapes text for web categories, returns specific data for others. Provides citations. Allows optional filtering. Is able to read PDF files and convert to Markdown.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
@@ -951,7 +951,7 @@ async def main():
                         },
                         {
                             "name": "get_website",
-                            "description": "Scrape content from web pages (using Trafilatura, converting Reddit to old.reddit). Caches results and provides citations.",
+                            "description": "Scrape content from web pages (using Trafilatura, converting Reddit to old.reddit). Caches results and provides citations. Is able to read PDF files and convert these to Markdown.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
