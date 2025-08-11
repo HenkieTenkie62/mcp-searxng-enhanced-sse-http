@@ -23,6 +23,9 @@ import trafilatura
 from dateutil import parser as date_parser
 from cachetools import TTLCache
 from zoneinfo import ZoneInfo
+import filetype
+import pymupdf
+import pymupdf4llm
 
 # --- Custom Exceptions ---
 class MCPServerError(Exception):
@@ -245,15 +248,32 @@ class HelperFunctions:
             response = await client.get(url_to_fetch, timeout=valves.SCRAPING_TIMEOUT)
             response.raise_for_status()
             html_content = response.text
+            raw_content = response.content
+
+            # We only need a couple of initial bytes, not the whole file for MIME type guess
+            kind = filetype.guess(raw_content)
+
+            if kind is not None and kind.mime == "application/pdf":
+                # Process PDF
+                doc = pymupdf.open(stream=raw_content, filetype="pdf")
+                md_text = pymupdf4llm.to_markdown(doc)
+    
+                content = md_text
+                truncated_content = HelperFunctions.truncate_to_n_words(content, valves.PAGE_CONTENT_WORDS_LIMIT)
+                excerpt = HelperFunctions.generate_excerpt(content)
+
+                title = "A PDF document converted to Markdown"
+                soup = None
+            else:
+                # Assume HTML for now
+                soup = BeautifulSoup(html_content, "html.parser")
+                title = result.get("title") or (soup.title.string if soup.title else "No title")
+                title = unicodedata.normalize("NFKC", title.strip())
+                title = HelperFunctions.remove_emojis(title)
             
-            soup = BeautifulSoup(html_content, "html.parser")
-            title = result.get("title") or (soup.title.string if soup.title else "No title")
-            title = unicodedata.normalize("NFKC", title.strip())
-            title = HelperFunctions.remove_emojis(title)
-            
-            content = HelperFunctions.format_text_with_trafilatura(html_content, valves.TRAFILATURA_TIMEOUT)
-            truncated_content = HelperFunctions.truncate_to_n_words(content, valves.PAGE_CONTENT_WORDS_LIMIT)
-            excerpt = HelperFunctions.generate_excerpt(content)
+                content = HelperFunctions.format_text_with_trafilatura(html_content, valves.TRAFILATURA_TIMEOUT)
+                truncated_content = HelperFunctions.truncate_to_n_words(content, valves.PAGE_CONTENT_WORDS_LIMIT)
+                excerpt = HelperFunctions.generate_excerpt(content)
             
             return {
                 "title": title,
@@ -356,7 +376,7 @@ class Tools:
         IGNORED_WEBSITES: str = Field(default="")
         RETURNED_SCRAPPED_PAGES_NO: int = Field(default=3, ge=1, le=20)
         SCRAPPED_PAGES_NO: int = Field(default=5, ge=1, le=30)
-        PAGE_CONTENT_WORDS_LIMIT: int = Field(default=5000, ge=500, le=20000)
+        PAGE_CONTENT_WORDS_LIMIT: int = Field(default=5000, ge=50, le=20000)
         CITATION_LINKS: bool = Field(default=True)
         desired_timezone: str = Field(default="America/New_York")
         TRAFILATURA_TIMEOUT: int = Field(default=15, ge=5, le=60)
@@ -727,14 +747,34 @@ class Tools:
             response_site = await self.client.get(url_to_fetch, timeout=120)
             response_site.raise_for_status()
             html_content = response_site.text
-            soup = BeautifulSoup(html_content, "html.parser")
-            page_title_tag = soup.find('title')
-            page_title = page_title_tag.string if page_title_tag else "No title found"
-            page_title = unicodedata.normalize("NFKC", page_title.strip())
-            page_title = HelperFunctions.remove_emojis(page_title)
-            content_site = HelperFunctions.format_text_with_trafilatura(html_content, self.valves.TRAFILATURA_TIMEOUT)
-            truncated_content = HelperFunctions.truncate_to_n_words(content_site, self.valves.PAGE_CONTENT_WORDS_LIMIT)
-            excerpt = HelperFunctions.generate_excerpt(content_site)
+
+            #TODO: Refactor this into a separate function in order no to duplicate code used in search_web
+            raw_content = response_site.content
+
+            # We only need a couple of initial bytes, not the whole file for MIME type guess
+            kind = filetype.guess(raw_content)
+
+            if kind is not None and kind.mime == "application/pdf":
+                # Process PDF
+                doc = pymupdf.open(stream=raw_content, filetype="pdf")
+                md_text = pymupdf4llm.to_markdown(doc)
+    
+                content_site = md_text
+                truncated_content = HelperFunctions.truncate_to_n_words(content_site, self.valves.PAGE_CONTENT_WORDS_LIMIT)
+                excerpt = HelperFunctions.generate_excerpt(content_site)
+
+                page_title = "A PDF document converted to Markdown"
+                soup = None
+            else:
+                soup = BeautifulSoup(html_content, "html.parser")
+                page_title_tag = soup.find('title')
+                page_title = page_title_tag.string if page_title_tag else "No title found"
+                page_title = unicodedata.normalize("NFKC", page_title.strip())
+                page_title = HelperFunctions.remove_emojis(page_title)
+                content_site = HelperFunctions.format_text_with_trafilatura(html_content, self.valves.TRAFILATURA_TIMEOUT)
+                truncated_content = HelperFunctions.truncate_to_n_words(content_site, self.valves.PAGE_CONTENT_WORDS_LIMIT)
+                excerpt = HelperFunctions.generate_excerpt(content_site)
+
             return {
                 "title": page_title, "url": url, "content": truncated_content,
                 "excerpt": excerpt, "date_accessed": datetime.now(timezone.utc).isoformat(),
