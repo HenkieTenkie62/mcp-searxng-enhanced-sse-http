@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  mcp-searxng:
+    # Build from local Dockerfile and tag the image
+    build: .
+    image: henkietenkie62/mcp-searxng-enhanced:sse-http
+    container_name: mcp-searxng-enhanced-sse-http
+    ports:
+      - "11110:8000"          # exposes FastAPI/uvicorn HTTP port
+    environment:
+      SEARXNG_ENGINE_API_BASE_URL: "http://172.17.0.1:11100"
+      DESIRED_TIMEZONE: "Europe/Amsterdam"
+      ENABLE_HTTP_SERVER: "True"
+    restart: unless-stopped
