@@ -997,12 +997,21 @@ async def main():
     # Optionally start HTTP server (FastAPI) in the same process to expose OpenAPI + SSE
     enable_http = os.getenv("ENABLE_HTTP_SERVER", "False").lower() in ("1", "true", "yes")
     http_server_task = None
+    server = None
     if enable_http:
         logger.info("Starting embedded HTTP API (FastAPI + SSE) on 0.0.0.0:8000")
         config = uvicorn.Config(app=app, host="0.0.0.0", port=8000, log_level="info")
         server = uvicorn.Server(config=config)
 
-        # run server in background task
+        # If HTTP_ONLY is set, run uvicorn in the foreground and do NOT read stdin (useful when running as a standalone HTTP service)
+        http_only = os.getenv("HTTP_ONLY", "False").lower() in ("1", "true", "yes")
+        if http_only:
+            logger.info("HTTP_ONLY mode enabled - running HTTP server only and skipping JSON-RPC stdin loop")
+            await server.serve()
+            logger.info("HTTP server stopped, exiting main")
+            return
+
+        # otherwise run server in background task and keep JSON-RPC loop active (legacy MCP behavior)
         http_server_task = asyncio.create_task(server.serve())
     while True:
         line = sys.stdin.readline()
