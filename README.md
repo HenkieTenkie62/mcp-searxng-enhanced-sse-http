@@ -199,10 +199,40 @@ The server uses a three-tier configuration approach:
 3. **Environment variables** (highest precedence)
 
 The config file is only updated when:
-- The file doesn't exist yet (first-time initialization)
-- Environment variables are explicitly provided for the current run
 
 This ensures that user configurations are preserved between container restarts when no new environment variables are set.
+
+## Headless HTTP server (containers / remote runs)
+
+This project supports running as a headless HTTP server exposing a small
+HTTP API and a Server-Sent Events (SSE) stream. Use these environment variables
+to control behavior:
+
+- `ENABLE_HTTP_SERVER` (True/False): enable the embedded FastAPI + SSE server.
+- `HTTP_ONLY` (True/False): when True the server runs the HTTP server in the
+  foreground and skips the JSON-RPC stdin loop (recommended for containers).
+
+Examples:
+
+Run as a purely HTTP/SSE service (foreground):
+```bash
+docker run -e ENABLE_HTTP_SERVER=true -e HTTP_ONLY=true -p 8000:8000 <your-image>
+```
+
+Run with docker-compose (this repository includes a provided
+`docker-compose.yml` that builds and runs the image):
+```bash
+docker-compose up --build -d
+```
+
+Endpoints provided by the embedded HTTP server:
+- `POST /tools/call` — JSON payload `{ "name": "<tool>", "arguments": { ... } }` to call a tool.
+- `GET  /events` — SSE stream that broadcasts `tool/event` notifications (same payloads
+  as the JSON-RPC notification messages printed to stdout).
+
+The server logs Pydantic deprecation warnings for v1-style validators; those are
+informational and don't affect runtime. If you'd like, we can migrate the
+validators to Pydantic v2 style to remove warnings.
 
 ## Tools & Aliases
 
