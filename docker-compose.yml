@@ -2,8 +2,14 @@ version: '3.8'
 
 services:
   mcp-searxng:
-    # Build from local Dockerfile and tag the image
-    build: .
+    # Build from the repository root where the Dockerfile lives. Use an explicit
+    # build object so the dockerfile path is unambiguous. The repository layout
+    # places the Dockerfile one level above this compose file in
+    # /mcp-searxng-enhanced-sse-http/Dockerfile; adjust the context and dockerfile
+    # path accordingly below.
+    build:
+      context: ..
+      dockerfile: Dockerfile
     image: henkietenkie62/mcp-searxng-enhanced:sse-http
     container_name: mcp-searxng-enhanced-sse-http
     ports:
@@ -12,4 +18,5 @@ services:
       SEARXNG_ENGINE_API_BASE_URL: "http://172.17.0.1:11100"
       DESIRED_TIMEZONE: "Europe/Amsterdam"
       ENABLE_HTTP_SERVER: "True"
+      HTTP_ONLY: "True"
     restart: unless-stopped
