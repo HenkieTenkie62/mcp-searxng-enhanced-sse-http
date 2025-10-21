@@ -1013,11 +1013,76 @@ async def main():
 
         # otherwise run server in background task and keep JSON-RPC loop active (legacy MCP behavior)
         http_server_task = asyncio.create_task(server.serve())
+    # If running with an embedded HTTP server and stdin is not interactive (for example
+    # in Docker containers where stdin is closed), skip reading the JSON-RPC stdin loop
+    # and instead wait on the HTTP server task so the process stays alive serving HTTP.
+    http_only = os.getenv("HTTP_ONLY", "False").lower() in ("1", "true", "yes")
+    if enable_http and not http_only:
+        try:
+            stdin_is_tty = os.isatty(sys.stdin.fileno())
+        except Exception:
+            stdin_is_tty = False
+        if not stdin_is_tty or sys.stdin.closed:
+            logger.info("stdin is not interactive; skipping JSON-RPC loop and waiting for HTTP server to stop.")
+            # Wait for the uvicorn server to signal exit. When running in the
+            # background its task may finish early in some environments; prefer
+            # to monitor the server.should_exit flag so we remain alive while
+            # the HTTP server is running.
+            if server is not None:
+                try:
+                    while not getattr(server, "should_exit", True):
+                        await asyncio.sleep(0.5)
+                except asyncio.CancelledError:
+                    pass
+            elif http_server_task:
+                try:
+                    await http_server_task
+                except asyncio.CancelledError:
+                    pass
+            logger.info("HTTP server stopped, exiting main loop.")
+            logger.info("Closing HTTP client.")
+            await tools_instance.close_client()
+            if http_server_task:
+                logger.info("Shutting down embedded HTTP server...")
+                http_server_task.cancel()
+                try:
+                    await http_server_task
+                except asyncio.CancelledError:
+                    pass
+            logger.info("MCP Server exiting.")
+            return
+
     while True:
         line = sys.stdin.readline()
         if not line:
-            logger.info("MCP Server: EOF received, exiting main loop.")
-            break
+            # If we started an embedded HTTP server, don't exit immediately on stdin EOF.
+            # This happens in containerized deployments where stdin may be closed but
+            # the process should keep running to serve HTTP/SSE. If HTTP_ONLY is used
+            # the server is already running in the foreground above and we won't reach
+            # this point.
+            if enable_http:
+                logger.info("MCP Server: EOF received, HTTP server active - waiting for HTTP server to stop.")
+                # If we started the server as a background task, await it here so the
+                # process stays alive until the HTTP server stops. If the server object
+                # exists but no task was created, run it now (should be rare).
+                # Prefer monitoring the server flag rather than awaiting the
+                # background task directly so we don't exit prematurely.
+                if server is not None:
+                    try:
+                        while not getattr(server, "should_exit", True):
+                            await asyncio.sleep(0.5)
+                    except asyncio.CancelledError:
+                        pass
+                elif http_server_task:
+                    try:
+                        await http_server_task
+                    except asyncio.CancelledError:
+                        pass
+                logger.info("HTTP server stopped, exiting main loop.")
+                break
+            else:
+                logger.info("MCP Server: EOF received, exiting main loop.")
+                break
         try:
             request = json.loads(line)
             request_id = request.get("id")
