@@ -15,8 +15,8 @@ COPY mcp_server.py .
 
 # Define environment variables with default values
 # Core configuration
-ENV SEARXNG_ENGINE_API_BASE_URL="http://host.docker.internal:8080/search"
-ENV DESIRED_TIMEZONE="America/New_York"
+ENV SEARXNG_ENGINE_API_BASE_URL="http://172.17.0.1:11100"
+ENV DESIRED_TIMEZONE="Europe/Amsterdam"
 ENV ODS_CONFIG_PATH="/config/ods_config.json"
 
 # Search results configuration
