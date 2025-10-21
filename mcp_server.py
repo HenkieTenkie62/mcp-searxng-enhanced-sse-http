@@ -26,6 +26,10 @@ from zoneinfo import ZoneInfo
 import filetype
 import pymupdf
 import pymupdf4llm
+# HTTP / OpenAPI server
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse, JSONResponse
+import uvicorn
 
 # --- Custom Exceptions ---
 class MCPServerError(Exception):
@@ -874,14 +878,132 @@ async def send_json_rpc(data: Dict[str, Any]):
     sys.stdout.write(f"{message_str}\n")
     sys.stdout.flush()
 
+# SSE subscribers: each is an asyncio.Queue that receives notification payloads
+_sse_subscribers: "set[asyncio.Queue]" = set()
+
 async def send_notification(method: str, params: Any):
-    await send_json_rpc({"jsonrpc": "2.0", "method": method, "params": params})
+    """Send a JSON-RPC notification to stdout and broadcast to SSE clients."""
+    payload = {"jsonrpc": "2.0", "method": method, "params": params}
+    # write to stdout (existing MCP channel)
+    await send_json_rpc(payload)
+    # broadcast to SSE subscribers (non-blocking)
+    if _sse_subscribers:
+        msg = json.dumps(payload)
+        dead = []
+        for q in list(_sse_subscribers):
+            try:
+                q.put_nowait(msg)
+            except Exception:
+                # queue might be full/closed; mark to remove
+                dead.append(q)
+        for q in dead:
+            _sse_subscribers.discard(q)
+
+# FastAPI app; endpoints created here will reference global TOOLS when initialized in main()
+app = FastAPI(title="mcp-searxng-enhanced HTTP API", version="1.1.0")
+TOOLS = None  # will be set to Tools(...) instance in main()
+
+
+@app.post("/tools/call")
+async def http_tools_call(body: dict):
+    """HTTP wrapper around tools/call. Accepts JSON: {"name":"...","arguments":{...}}"""
+    global TOOLS
+    if TOOLS is None:
+        return JSONResponse({"error": "Server not initialized"}, status_code=503)
+    tool_name = body.get("name")
+    tool_args = body.get("arguments", {})
+    try:
+        # reuse alias logic from main loop
+        alias_map = {
+            "search": "search_web",
+            "web_search": "search_web",
+            "find": "search_web",
+            "lookup_web": "search_web",
+            "search_online": "search_web",
+            "access_internet": "search_web",
+            "fetch_url": "get_website",
+            "scrape_page": "get_website",
+            "get": "get_website",
+            "load_website": "get_website",
+            "current_time": "get_current_datetime",
+            "get_time": "get_current_datetime",
+            "current_date": "get_current_datetime",
+        }
+        if tool_name == "lookup":
+            if "url" in tool_args and tool_args["url"]:
+                canonical_name = "get_website"
+            else:
+                canonical_name = "search_web"
+            tool_name = canonical_name
+        elif tool_name in alias_map:
+            tool_name = alias_map[tool_name]
+
+        if tool_name == "search_web":
+            query = tool_args.get("query")
+            if not query:
+                raise ValueError("Missing 'query' argument for search_web")
+            engines = tool_args.get("engines")
+            category = tool_args.get("category", "general")
+            safesearch = tool_args.get("safesearch")
+            time_range = tool_args.get("time_range")
+            result_text = await TOOLS.search_web(query, engines, category, safesearch, time_range)
+            return {"content": [{"type": "text", "text": result_text}], "isError": False}
+        elif tool_name == "get_website":
+            url = tool_args.get("url")
+            if not url:
+                raise ValueError("Missing 'url' argument for get_website")
+            result_text = await TOOLS.get_website(url)
+            return {"content": [{"type": "text", "text": result_text}], "isError": False}
+        elif tool_name == "get_current_datetime":
+            datetime_str = TOOLS.get_current_datetime()
+            return {"content": [{"type": "text", "text": datetime_str}], "isError": False}
+        else:
+            raise ValueError(f"Unknown tool: {tool_name}")
+    except Exception as e:
+        return {"content": [{"type": "text", "text": str(e)}], "isError": True}
+
+
+@app.get("/events")
+async def sse_events(request: Request):
+    """Server-Sent Events endpoint streaming all `tool/event` notifications in realtime."""
+    queue: asyncio.Queue = asyncio.Queue()
+    _sse_subscribers.add(queue)
+
+    async def event_generator():
+        try:
+            while True:
+                # if client disconnected, stop
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await queue.get()
+                except asyncio.CancelledError:
+                    break
+                # SSE format: data: <json>\n\n
+                yield f"data: {msg}\n\n"
+        finally:
+            _sse_subscribers.discard(queue)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 # --- Main Server Loop ---
 async def main():
+    global TOOLS
     tools_instance = Tools(send_notification_func=send_notification)
+    TOOLS = tools_instance
     logger.info("MCP Server Tools instance created.")
     logger.info("MCP Server entering main loop...")
+
+    # Optionally start HTTP server (FastAPI) in the same process to expose OpenAPI + SSE
+    enable_http = os.getenv("ENABLE_HTTP_SERVER", "False").lower() in ("1", "true", "yes")
+    http_server_task = None
+    if enable_http:
+        logger.info("Starting embedded HTTP API (FastAPI + SSE) on 0.0.0.0:8000")
+        config = uvicorn.Config(app=app, host="0.0.0.0", port=8000, log_level="info")
+        server = uvicorn.Server(config=config)
+
+        # run server in background task
+        http_server_task = asyncio.create_task(server.serve())
     while True:
         line = sys.stdin.readline()
         if not line:
@@ -1046,6 +1168,14 @@ async def main():
             await send_json_rpc(error_response)
     logger.info("Closing HTTP client.")
     await tools_instance.close_client()
+    # shutdown HTTP server if running
+    if http_server_task:
+        logger.info("Shutting down embedded HTTP server...")
+        http_server_task.cancel()
+        try:
+            await http_server_task
+        except asyncio.CancelledError:
+            pass
     logger.info("MCP Server exiting.")
 
 if __name__ == "__main__":

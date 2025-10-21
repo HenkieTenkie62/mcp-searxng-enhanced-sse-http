@@ -43,4 +43,6 @@ ENV RATE_LIMIT_REQUESTS_PER_MINUTE="10"
 ENV RATE_LIMIT_TIMEOUT_SECONDS="60"
 
 # Run mcp_server.py when the container launches
+ENV ENABLE_HTTP_SERVER="True"
+EXPOSE 8000
 CMD ["python", "mcp_server.py"]
