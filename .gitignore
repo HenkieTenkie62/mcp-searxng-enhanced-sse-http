@@ -26,8 +26,6 @@ Thumbs.db
 # Cline Docs
 cline_docs/
 
-# GitHub specific files
-.github/
 
 # Memory Bank
 memory_bank/
