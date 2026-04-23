@@ -601,6 +601,25 @@ async def shutdown_server():
     logger.info("Shutdown complete")
 
 
+# --- Middleware ---
+class HostHeaderMiddleware:
+    """Fix Host header for MCP SDK when behind reverse proxy/port mapping."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            headers = list(scope.get("headers", []))
+            new_headers = []
+            for name, value in headers:
+                if name.lower() == b"host":
+                    new_headers.append((b"host", b"localhost:8000"))
+                else:
+                    new_headers.append((name, value))
+            scope["headers"] = new_headers
+        await self.app(scope, receive, send)
+
+
 # --- Entrypoint ---
 async def _run_stdio_async():
     await init_server()
@@ -624,7 +643,7 @@ def run_http():
     path = config.MCP_HTTP_PATH
     logger.info(f"Starting MCP server with streamable-http on http://{host}:{port}{path}")
     mcp.settings.streamable_http_path = path
-    app = mcp.streamable_http_app()
+    app = HostHeaderMiddleware(mcp.streamable_http_app())
     uvicorn.run(app, host=host, port=port, log_level="info", proxy_headers=True, forwarded_allow_ips="*")
 
 
