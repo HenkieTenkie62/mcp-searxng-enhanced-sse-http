@@ -1,308 +1,227 @@
-[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/overtlids-mcp-searxng-enhanced-badge.png)](https://mseep.ai/app/overtlids-mcp-searxng-enhanced)
+# MCP SearXNG Enhanced Server (HTTP Edition)
 
-# MCP SearXNG Enhanced Server
+> **Fork van [OvertliDS/mcp-searxng-enhanced](https://github.com/OvertliDS/mcp-searxng-enhanced)** — nu met **officiële MCP Python SDK**, **Streamable HTTP transport**, en **protocol 2025-03-26**.
 
-A Model Context Protocol (MCP) server for category-aware web search, website scraping, and date/time tools. Designed for seamless integration with SearXNG and modern MCP clients.
+Een [Model Context Protocol](https://modelcontextprotocol.io) server voor categorie-bewust webzoeken, website scraping, en datum/tijd tools. Geïntegreerd met [SearXNG](https://github.com/searxng/searxng) en compatibel met moderne MCP clients zoals Claude Desktop, Cline, Continue, en Cursor.
+
+## Belangrijkste wijzigingen ten opzichte van upstream
+
+- **Officiële MCP Python SDK** (`FastMCP`) — geen handmatige JSON-RPC/stdio spaghetti meer
+- **Drie transport modes**: `stdio` (backward compatible), `streamable-http`, of `both`
+- **Protocol 2025-03-26** — de huidige MCP standaard
+- **Multi-stage Docker build** — kleinere image (~60% reductie)
+- **Docker Compose** — one-command deployment
+- **Pydantic v2** — modernere configuratie validatie
+- **Uvicorn** — productie-klare ASGI server voor HTTP mode
+
+> **Nota bene:** Het oude **SSE (Server-Sent Events) transport** uit MCP protocol 2024-11-05 is **deprecated**. De nieuwe standaard is **Streamable HTTP** (Maart 2025). Deze fork implementeert uitsluitend Streamable HTTP, niet het oude SSE transport.
+
+---
 
 ## Features
 
-- 🔍 SearXNG-powered web search with category support (general, images, videos, files, map, social media)
-- 📄 Website content scraping with citation metadata and automatic Reddit URL conversion
-- 📜 Intial PDF reading support with a conversion to Markdown using [PyMuPDF/PyMuPDF4LLM](https://pymupdf.readthedocs.io/en/latest/pymupdf4llm/index.html#pymupdf4llm)
-- 💾 In-memory caching with automatic freshness validation
-- 🚦 Domain-based rate limiting to prevent service abuse
-- 🕒 Timezone-aware date/time tool
-- ⚠️ Robust error handling with custom exception types
-- 🐳 Dockerized and configurable via environment variables
-- ⚙️ Configuration persistence between container restarts
+- 🔍 **SearXNG-powered web search** met categorieën: `general`, `images`, `videos`, `files`, `map`, `social media`, `news`, `it`, `science`
+- 📄 **Website scraping** met Trafilatura, citatie-metadata, en automatische Reddit URL conversie (`old.reddit.com`)
+- 📜 **PDF naar Markdown** conversie via PyMuPDF / PyMuPDF4LLM
+- 💾 **In-memory caching** met TTL en freshness validatie
+- 🚦 **Domein-gebaseerde rate limiting**
+- 🕒 **Timezone-aware** datum/tijd tool
+- 🐳 **Docker + Docker Compose** ready
+- 🔧 **Configureerbaar** via environment variables of `.env` bestand
+
+---
 
 ## Quick Start
 
-### Prerequisites
+### 1. Clone en configureer
 
-- Docker installed on your system
-- A running SearXNG instance (self-hosted or accessible endpoint)
-
-### Installation & Usage
-
-**Build the Docker image:**
 ```bash
-docker build -t overtlids/mcp-searxng-enhanced:latest .
+git clone <deze-repo>
+cd mcp-searxng-enhanced
+cp .env.example .env
+# Bewerk .env en pas SEARXNG_ENGINE_API_BASE_URL aan!
 ```
 
-**Run with your SearXNG instance (Manual Docker Run):**
+### 2. Docker Compose (aanbevolen voor HTTP mode)
+
 ```bash
+docker compose up --build
+```
+
+De server draait dan op `http://localhost:8000/mcp`.
+
+### 3. Docker run (stdio mode — voor MCP clients zoals Cline)
+
+```bash
+docker build -t mcp-searxng-enhanced .
 docker run -i --rm --network=host \
-  -e SEARXNG_ENGINE_API_BASE_URL="http://127.0.0.1:8080/search" \
-  -e DESIRED_TIMEZONE="America/New_York" \
-  overtlids/mcp-searxng-enhanced:latest
+  -e SEARXNG_ENGINE_API_BASE_URL=http://127.0.0.1:8080/search \
+  -e DESIRED_TIMEZONE=Europe/Amsterdam \
+  mcp-searxng-enhanced
 ```
-In this example, `SEARXNG_ENGINE_API_BASE_URL` is explicitly set. `DESIRED_TIMEZONE` is also explicitly set to `America/New_York`, which matches its default value. If an environment variable is not provided using an `-e` flag during the `docker run` command, the server will automatically use the default value defined in its `Dockerfile` (refer to the Environment Variables table below). Thus, if you intend to use the default for `DESIRED_TIMEZONE`, you could omit the `-e DESIRED_TIMEZONE="America/New_York"` flag. However, `SEARXNG_ENGINE_API_BASE_URL` is critical and usually needs to be set to match your specific SearXNG instance's address if the Dockerfile default (`http://host.docker.internal:8080/search`) is not appropriate.
 
-**Note on Manual Docker Run:** This command runs the Docker container independently. If you are using an MCP client (like Cline in VS Code) to manage this server, the client will start its own instance of the container using the settings defined in *its own configuration*. For the MCP client to use specific environment variables, they **must** be configured within the client's settings for this server (see below).
+### 4. Native (zonder Docker)
 
-**Configure your MCP client** (e.g., Cline in VS Code):
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python mcp_server.py
+```
 
-For your MCP client to correctly manage and run this server, you **must** define all necessary environment variables within the client's settings for the `overtlids/mcp-searxng-enhanced` server. The MCP client will use these settings to construct the `docker run` command.
+---
 
-The following is the **recommended default configuration** for this server within your MCP client's JSON settings (e.g., `cline_mcp_settings.json`). This example explicitly lists all environment variables set to their default values as defined in the `Dockerfile`. You can copy and paste this directly and then customize any values as needed.
+## Transport Modes
 
+Stel in via de environment variable `MCP_TRANSPORT`:
+
+| Mode | Waarde | Gebruik |
+|------|--------|---------|
+| **stdio** | `stdio` | MCP clients starten de server als subprocess (Claude, Cline, Cursor) |
+| **Streamable HTTP** | `streamable-http` | De server luistert op een HTTP endpoint; clients verbinden via URL |
+| **Both** | `both` | Stdio + HTTP tegelijk (handig voor debugging) |
+
+### HTTP Mode details
+
+Wanneer `MCP_TRANSPORT=streamable-http`:
+
+- Endpoint: `http://localhost:8000/mcp` (standaard)
+- Configureerbaar via `MCP_HTTP_HOST`, `MCP_HTTP_PORT`, `MCP_HTTP_PATH`
+- Gebruikt **Streamable HTTP** per MCP protocol 2025-03-26
+- Stateless by default (`stateless_http=True`)
+
+### MCP Client configuratie
+
+**stdio mode** (Cline / VS Code):
 ```json
 {
   "mcpServers": {
-    "overtlids/mcp-searxng-enhanced": {
+    "searxng": {
       "command": "docker",
       "args": [
         "run", "-i", "--rm", "--network=host",
         "-e", "SEARXNG_ENGINE_API_BASE_URL=http://host.docker.internal:8080/search",
-        "-e", "DESIRED_TIMEZONE=America/New_York",
-        "-e", "ODS_CONFIG_PATH=/config/ods_config.json",
-        "-e", "RETURNED_SCRAPPED_PAGES_NO=3",
-        "-e", "SCRAPPED_PAGES_NO=5",
-        "-e", "PAGE_CONTENT_WORDS_LIMIT=5000",
-        "-e", "CITATION_LINKS=True",
-        "-e", "MAX_IMAGE_RESULTS=10",
-        "-e", "MAX_VIDEO_RESULTS=10",
-        "-e", "MAX_FILE_RESULTS=5",
-        "-e", "MAX_MAP_RESULTS=5",
-        "-e", "MAX_SOCIAL_RESULTS=5",
-        "-e", "TRAFILATURA_TIMEOUT=15",
-        "-e", "SCRAPING_TIMEOUT=20",
-        "-e", "CACHE_MAXSIZE=100",
-        "-e", "CACHE_TTL_MINUTES=5",
-        "-e", "CACHE_MAX_AGE_MINUTES=30",
-        "-e", "RATE_LIMIT_REQUESTS_PER_MINUTE=10",
-        "-e", "RATE_LIMIT_TIMEOUT_SECONDS=60",
-        "-e", "IGNORED_WEBSITES=",
-        "overtlids/mcp-searxng-enhanced:latest"
+        "-e", "DESIRED_TIMEZONE=Europe/Amsterdam",
+        "mcp-searxng-enhanced:latest"
       ],
-      "timeout": 60
+      "timeout": 120
     }
   }
 }
 ```
-**Key Points for MCP Client Configuration:**
-- The example above provides a complete set of arguments to run the Docker container with all environment variables set to their default values.
-- To customize any setting, simply modify the value for the corresponding `-e "VARIABLE_NAME=value"` line within the `args` array in your MCP client's configuration. For instance, to change `SEARXNG_ENGINE_API_BASE_URL` and `DESIRED_TIMEZONE`, you would adjust their respective lines.
-- Refer to the "Environment Variables" table below for a detailed description of each variable and its default.
-- The server's behavior is primarily controlled by these environment variables. While an `ods_config.json` file can also influence settings (see Configuration Management), environment variables passed by the MCP client take precedence.
 
-## Running Natively (Without Docker)
-
-If you prefer to run the server directly using Python without Docker, follow these steps:
-
-**1. Python Installation:**
-   - This server requires **Python 3.9 or newer**. Python 3.11 (as used in the Docker image) is recommended.
-   - You can download Python from [python.org](https://www.python.org/downloads/).
-
-**2. Clone the Repository:**
-   - Get the code from GitHub:
-     ```bash
-     git clone https://github.com/OvertliDS/mcp-searxng-enhanced.git
-     cd mcp-searxng-enhanced
-     ```
-
-**3. Create and Activate a Virtual Environment (Recommended):**
-   - Using a virtual environment helps manage dependencies and avoid conflicts with other Python projects.
-     ```bash
-     # For Linux/macOS
-     python3 -m venv .venv
-     source .venv/bin/activate
-
-     # For Windows (Command Prompt)
-     python -m venv .venv
-     .\.venv\Scripts\activate.bat
-
-     # For Windows (PowerShell)
-     python -m venv .venv
-     .\.venv\Scripts\Activate.ps1
-     ```
-
-**4. Install Dependencies:**
-   - Install the required Python packages:
-     ```bash
-     pip install -r requirements.txt
-     ```
-     Key dependencies include `httpx`, `BeautifulSoup4`, `pydantic`, `trafilatura`, `python-dateutil`, `cachetools`, `zoneinfo`, `filetype`, `pymupdf` and `pymupdf4llm`.
-
-**5. Ensure SearXNG is Accessible:**
-   - You still need a running SearXNG instance. Make sure you have its API base URL (e.g., `http://127.0.0.1:8080/search`).
-
-**6. Set Environment Variables:**
-   - The server is configured via environment variables. At a minimum, you'll likely need to set `SEARXNG_ENGINE_API_BASE_URL`.
-   - **Linux/macOS (bash/zsh):**
-     ```bash
-     export SEARXNG_ENGINE_API_BASE_URL="http://your-searxng-instance:port/search"
-     export DESIRED_TIMEZONE="America/Los_Angeles"
-     ```
-   - **Windows (Command Prompt):**
-     ```bash
-     set SEARXNG_ENGINE_API_BASE_URL="http://your-searxng-instance:port/search"
-     set DESIRED_TIMEZONE="America/Los_Angeles"
-     ```
-   - **Windows (PowerShell):**
-     ```bash
-     $env:SEARXNG_ENGINE_API_BASE_URL="http://your-searxng-instance:port/search"
-     $env:DESIRED_TIMEZONE="America/Los_Angeles"
-     ```
-   - Refer to the "Environment Variables" table below for all available options. If not set, defaults from the script or an `ods_config.json` file (if present in the root directory or at `ODS_CONFIG_PATH`) will be used.
-
-**7. Run the Server:**
-   - Execute the Python script:
-     ```bash
-     python mcp_server.py
-     ```
-   - The server will start and listen for MCP client connections via stdin/stdout.
-
-**8. Configuration File (`ods_config.json`):**
-   - Alternatively, or in combination with environment variables, you can create an `ods_config.json` file in the project's root directory (or the path specified by the `ODS_CONFIG_PATH` environment variable). Environment variables will always take precedence over values in this file. Example:
-    ```json
-    {
-      "searxng_engine_api_base_url": "http://127.0.0.1:8080/search",
-      "desired_timezone": "America/New_York"
+**HTTP mode** (clients die HTTP MCP ondersteunen):
+```json
+{
+  "mcpServers": {
+    "searxng": {
+      "url": "http://localhost:8000/mcp",
+      "timeout": 120
     }
-    ```
+  }
+}
+```
+
+---
 
 ## Environment Variables
 
-The following environment variables control the server's behavior. You can set them in your MCP client's configuration (recommended for client-managed servers) or when running Docker manually.
+| Variable | Standaard | Omschrijving |
+|----------|-----------|--------------|
+| `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio`, `streamable-http`, `both` |
+| `MCP_HTTP_HOST` | `0.0.0.0` | HTTP bind adres |
+| `MCP_HTTP_PORT` | `8000` | HTTP poort |
+| `MCP_HTTP_PATH` | `/mcp` | HTTP endpoint path |
+| `SEARXNG_ENGINE_API_BASE_URL` | `http://host.docker.internal:8080/search` | **Verplicht:** je SearXNG endpoint |
+| `DESIRED_TIMEZONE` | `Europe/Amsterdam` | Tijdzone voor datum/tijd tool |
+| `RETURNED_SCRAPPED_PAGES_NO` | `3` | Max pagina's teruggegeven per zoekopdracht |
+| `SCRAPPED_PAGES_NO` | `5` | Max pagina's geprobeerd te scrapen |
+| `PAGE_CONTENT_WORDS_LIMIT` | `5000` | Max woorden per gescrapete pagina |
+| `CITATION_LINKS` | `True` | Citaties genereren |
+| `TRAFILATURA_TIMEOUT` | `15` | Content extractie timeout (sec) |
+| `SCRAPING_TIMEOUT` | `20` | HTTP request timeout (sec) |
+| `CACHE_MAXSIZE` | `100` | Max cache entries |
+| `CACHE_TTL_MINUTES` | `5` | Cache TTL |
+| `CACHE_MAX_AGE_MINUTES` | `30` | Max leeftijd cache voor validatie |
+| `RATE_LIMIT_REQUESTS_PER_MINUTE` | `10` | Max requests per domein per minuut |
+| `RATE_LIMIT_TIMEOUT_SECONDS` | `60` | Rate limit venster |
+| `MAX_IMAGE_RESULTS` | `10` | Max afbeeldingen |
+| `MAX_VIDEO_RESULTS` | `10` | Max video's |
+| `MAX_FILE_RESULTS` | `5` | Max bestanden |
+| `MAX_MAP_RESULTS` | `5` | Max kaartresultaten |
+| `MAX_SOCIAL_RESULTS` | `5` | Max social media resultaten |
+| `IGNORED_WEBSITES` | `""` | Comma-separated domeinen om te negeren |
 
-| Variable                        | Description                                | Default (from Dockerfile)         | Notes                                                                                                |
-|---------------------------------|--------------------------------------------|-----------------------------------|------------------------------------------------------------------------------------------------------|
-| `SEARXNG_ENGINE_API_BASE_URL`   | SearXNG search endpoint                    | `http://host.docker.internal:8080/search` | **Crucial for server operation**                                                                     |
-| `DESIRED_TIMEZONE`              | Timezone for date/time tool                | `America/New_York`                | E.g., `America/Los_Angeles`. List of tz database time zones: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones |
-| `ODS_CONFIG_PATH`               | Path to persistent configuration file      | `/config/ods_config.json`         | Typically left as default within the container.     |
-| `RETURNED_SCRAPPED_PAGES_NO`    | Max pages to return per search             | `3`                               |                                                       |
-| `SCRAPPED_PAGES_NO`             | Max pages to attempt scraping              | `5`                               |                                                       |
-| `PAGE_CONTENT_WORDS_LIMIT`      | Max words per scraped page                 | `5000`                            |                                                       |
-| `CITATION_LINKS`                | Enable/disable citation events             | `True`                            | `True` or `False`                                     |
-| `MAX_IMAGE_RESULTS`             | Maximum image results to return            | `10`                              |                                                       |
-| `MAX_VIDEO_RESULTS`             | Maximum video results to return            | `10`                              |                                                       |
-| `MAX_FILE_RESULTS`              | Maximum file results to return             | `5`                               |                                                       |
-| `MAX_MAP_RESULTS`               | Maximum map results to return              | `5`                               |                                                       |
-| `MAX_SOCIAL_RESULTS`            | Maximum social media results to return     | `5`                               |                                                       |
-| `TRAFILATURA_TIMEOUT`           | Content extraction timeout (seconds)       | `15`                              |                                                       |
-| `SCRAPING_TIMEOUT`              | HTTP request timeout (seconds)             | `20`                              |                                                       |
-| `CACHE_MAXSIZE`                 | Maximum number of cached websites          | `100`                             |                                                       |
-| `CACHE_TTL_MINUTES`             | Cache time-to-live (minutes)               | `5`                               |                                                       |
-| `CACHE_MAX_AGE_MINUTES`         | Maximum age for cached content (minutes)   | `30`                              |                                                       |
-| `RATE_LIMIT_REQUESTS_PER_MINUTE`| Max requests per domain per minute         | `10`                              |                                                       |
-| `RATE_LIMIT_TIMEOUT_SECONDS`    | Rate limit tracking window (seconds)       | `60`                              |                                                       |
-| `IGNORED_WEBSITES`              | Comma-separated list of sites to ignore    | `""` (empty)                      | E.g., `"example.com,another.org"`                   |
+---
 
-## Configuration Management
+## Tools
 
-The server uses a three-tier configuration approach:
+| Tool | Beschrijving | Aliases |
+|------|-------------|---------|
+| `search_web` | Web search via SearXNG | `search`, `web_search`, `find` |
+| `get_website` | Scrape website of PDF | `fetch_url`, `scrape_page` |
+| `get_current_datetime` | Huidige datum/tijd | `current_time`, `get_time` |
 
-1. **Script defaults** (hardcoded in Python)
-2. **Config file** (loaded from `ODS_CONFIG_PATH`, defaults to `/config/ods_config.json`)
-3. **Environment variables** (highest precedence)
+### Voorbeelden
 
-The config file is only updated when:
-- The file doesn't exist yet (first-time initialization)
-- Environment variables are explicitly provided for the current run
-
-This ensures that user configurations are preserved between container restarts when no new environment variables are set.
-
-## Tools & Aliases
-
-| Tool Name              | Purpose                       | Aliases                           |
-|------------------------|------------------------------ |-----------------------------------|
-| `search_web`           | Web search via SearXNG        | `search`, `web_search`, `find`, `lookup_web`, `search_online`, `access_internet`, `lookup`* |
-| `get_website`          | Scrape website content        | `fetch_url`, `scrape_page`, `get`, `load_website`, `lookup`* |
-| `get_current_datetime` | Current date/time             | `current_time`, `get_time`, `current_date` |
-
-\*`lookup` is context-sensitive:  
-- If called with a `url` argument, it maps to `get_website`  
-- Otherwise, it maps to `search_web`
-
-### Example: Calling Tools
-
-**Web Search**
+**Zoeken:**
 ```json
-{ "name": "search_web", "arguments": { "query": "open source ai" } }
-```
-or using an alias:
-```json
-{ "name": "search", "arguments": { "query": "open source ai" } }
+{ "name": "search_web", "arguments": { "query": "quantum computing" } }
 ```
 
-**Category-Specific Search**
+**Afbeeldingen:**
 ```json
-{ "name": "search_web", "arguments": { "query": "landscapes", "category": "images" } }
+{ "name": "search_web", "arguments": { "query": "zonsondergang", "category": "images" } }
 ```
 
-**Website Scraping**
+**Website scrapen:**
 ```json
-{ "name": "get_website", "arguments": { "url": "example.com" } }
-```
-or using an alias:
-```json
-{ "name": "lookup", "arguments": { "url": "example.com" } }
+{ "name": "get_website", "arguments": { "url": "https://example.com" } }
 ```
 
-**Current Date/Time**
-```json
-{ "name": "get_current_datetime", "arguments": {} }
+---
+
+## Architecture
+
 ```
-or:
-```json
-{ "name": "current_time", "arguments": {} }
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────┐
+│  MCP Client     │────▶│  mcp_server.py   │────▶│   SearXNG   │
+│  (Claude/etc)   │     │  FastMCP         │     │   Instance  │
+└─────────────────┘     └──────────────────┘     └─────────────┘
+                               │
+                               ▼
+                        ┌─────────────┐
+                        │  Websites   │
+                        │  (scraping) │
+                        └─────────────┘
 ```
 
-## Advanced Features
+- **Transport laag**: MCP Python SDK (`FastMCP`) handelt stdio of Streamable HTTP af
+- **Business logica**: Herbruikbare async functies voor search, scrape, cache
+- **Configuratie**: Pydantic v2 model met env-var override
 
-### Category-Specific Search
-
-The `search_web` tool supports different categories with tailored outputs:
-
-- **images**: Returns image URLs, titles, and source pages with optional Markdown embedding
-- **videos**: Returns video information including titles, source, and embed URLs
-- **files**: Returns downloadable file information including format and size
-- **map**: Returns location data including coordinates and addresses
-- **social media**: Returns posts and profiles from social platforms
-- **general**: Default category that scrapes and returns full webpage content
-
-### Reddit URL Conversion
-
-When scraping Reddit content, URLs are automatically converted to use the old.reddit.com domain for better content extraction.
-
-### Rate Limiting
-
-Domain-based rate limiting prevents excessive requests to the same domain within a time window. This prevents overwhelming target websites and potential IP blocking.
-
-### Cache Validation
-
-Cached website content is automatically validated for freshness based on age. Stale content is refreshed automatically while valid cached content is served quickly.
-
-## Error Handling
-
-The server implements a robust error handling system with these exception types:
-
-- `MCPServerError`: Base exception class for all server errors
-- `ConfigurationError`: Raised when configuration values are invalid
-- `SearXNGConnectionError`: Raised when connection to SearXNG fails
-- `WebScrapingError`: Raised when web scraping fails
-- `RateLimitExceededError`: Raised when rate limit for a domain is exceeded
-
-Errors are properly propagated to the client with informative messages.
+---
 
 ## Troubleshooting
 
-- **Cannot connect to SearXNG**: Ensure your SearXNG instance is running and the `SEARXNG_ENGINE_API_BASE_URL` environment variable points to the correct endpoint.
-- **Rate limit errors**: Adjust `RATE_LIMIT_REQUESTS_PER_MINUTE` if you're experiencing too many rate limit errors.
-- **Slow content extraction**: Increase `TRAFILATURA_TIMEOUT` to allow more time for content processing on complex pages.
-- **Docker networking issues**: If using Docker Desktop on Windows/Mac, `host.docker.internal` should resolve to the host machine. On Linux, you may need to use the host's IP address instead.
+| Probleem | Oplossing |
+|----------|-----------|
+| Kan geen verbinding maken met SearXNG | Controleer `SEARXNG_ENGINE_API_BASE_URL` en of SearXNG draait |
+| HTTP mode start niet | Controleer of poort 8000 vrij is; pas `MCP_HTTP_PORT` aan |
+| Rate limit errors | Verhoog `RATE_LIMIT_REQUESTS_PER_MINUTE` |
+| Traag scrapen | Verhoog `TRAFILATURA_TIMEOUT` en `SCRAPING_TIMEOUT` |
+| Docker networking (Linux) | Gebruik `--network=host` of het host IP adres |
 
-## Acknowledgements
-
-Inspired by:
-- [SearXNG](https://github.com/searxng/searxng) - Privacy-respecting metasearch engine
-- [Trafilatura](https://github.com/adbar/trafilatura) - Web scraping tool for text extraction
-- [ihor-sokoliuk/mcp-searxng](https://github.com/ihor-sokoliuk/mcp-searxng) - Original MCP server for SearXNG
-- [nnaoycurt](https://github.com/nnaoycurt) ([Better Web Search Tool](https://openwebui.com/t/nnaoycurt/web_search))
-- [@bwoodruff2021](https://github.com/bwoodruff2021) ([GetTimeDate Tool](https://openwebui.com/t/bwoodruff2021/gettime))
+---
 
 ## License
 
-MIT License © 2025 OvertliDS
+MIT License © 2025 — Origineel door OvertliDS, HTTP fork door community.
+
+---
+
+## Waarom geen SSE meer?
+
+MCP protocol 2024-11-05 definieerde een **HTTP+SSE transport** waarbij clients een SSE stream openden voor server→client berichten en POST gebruikten voor client→server. Dit is **vervangen** door **Streamable HTTP** in protocol 2025-03-26. Streamable HTTP is schaalbaarder, stateless-compatible, en kan optioneel SSE gebruiken voor streaming binnen hetzelfde endpoint — maar vereist geen aparte SSE verbinding meer.
+
+> Deze server implementeert **uitsluitend** het huidige Streamable HTTP transport. Geen legacy SSE.

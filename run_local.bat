@@ -1,40 +1,20 @@
 @echo off
+REM Run MCP SearXNG Enhanced Server locally (Windows CMD)
 
-REM Activate virtual environment if it exists
-IF EXIST .venv\Scripts\activate.bat (
-    echo Activating virtual environment...
-    CALL .venv\Scripts\activate.bat
-) ELSE (
-    echo No .venv directory found. Please ensure Python dependencies are installed.
-    echo You can create a virtual environment and install dependencies by running:
-    echo   python -m venv .venv
-    echo   .\.venv\Scripts\activate.bat
-    echo   pip install -r requirements.txt
-)
-
-REM Check for SEARXNG_ENGINE_API_BASE_URL
-IF "%SEARXNG_ENGINE_API_BASE_URL%"=="" (
-    set /p searxng_url="Enter your SearXNG Engine API Base URL (e.g., http://127.0.0.1:8080/search): "
-    IF "%searxng_url%"=="" (
-        echo SearXNG URL is required. Exiting.
-        exit /b 1
-    )
-    set SEARXNG_ENGINE_API_BASE_URL=%searxng_url%
-)
-
-REM Check for DESIRED_TIMEZONE (optional, provide default if not set)
-IF "%DESIRED_TIMEZONE%"=="" (
-    set /p timezone_input="Enter your desired timezone (e.g., America/New_York, default: America/New_York): "
-    IF NOT "%timezone_input%"=="" (
-        set DESIRED_TIMEZONE=%timezone_input%
-    ) ELSE (
-        set DESIRED_TIMEZONE=America/New_York
+REM Load .env if it exists
+if exist .env (
+    for /f "usebackq tokens=1,* delims=" %%a in (".env") do (
+        echo %%a | findstr /b "#" >nul || set "%%a"
     )
 )
+
+REM Defaults
+if "%MCP_TRANSPORT%"=="" set MCP_TRANSPORT=stdio
+if "%MCP_HTTP_HOST%"=="" set MCP_HTTP_HOST=0.0.0.0
+if "%MCP_HTTP_PORT%"=="" set MCP_HTTP_PORT=8000
+if "%MCP_HTTP_PATH%"=="" set MCP_HTTP_PATH=/mcp
 
 echo Starting MCP SearXNG Enhanced Server...
-echo Using SEARXNG_ENGINE_API_BASE_URL: %SEARXNG_ENGINE_API_BASE_URL%
-echo Using DESIRED_TIMEZONE: %DESIRED_TIMEZONE%
-REM Add other environment variables here if needed, following the same pattern
+echo Transport: %MCP_TRANSPORT%
 
 python mcp_server.py

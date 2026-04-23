@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  mcp-searxng:
+    build: .
+    image: mcp-searxng-enhanced:latest
+    container_name: mcp-searxng
+    ports:
+      - "8000:8000"
+    environment:
+      # Transport: stdio | streamable-http | both
+      - MCP_TRANSPORT=streamable-http
+      - MCP_HTTP_HOST=0.0.0.0
+      - MCP_HTTP_PORT=8000
+      - MCP_HTTP_PATH=/mcp
+
+      # SearXNG endpoint (pas dit aan naar je eigen instance)
+      - SEARXNG_ENGINE_API_BASE_URL=http://host.docker.internal:8080/search
+      - DESIRED_TIMEZONE=Europe/Amsterdam
+
+      # Optional tuning
+      - RETURNED_SCRAPPED_PAGES_NO=3
+      - SCRAPPED_PAGES_NO=5
+      - PAGE_CONTENT_WORDS_LIMIT=5000
+      - CITATION_LINKS=True
+      - TRAFILATURA_TIMEOUT=15
+      - SCRAPING_TIMEOUT=20
+      - CACHE_MAXSIZE=100
+      - CACHE_TTL_MINUTES=5
+      - CACHE_MAX_AGE_MINUTES=30
+      - RATE_LIMIT_REQUESTS_PER_MINUTE=10
+      - RATE_LIMIT_TIMEOUT_SECONDS=60
+    # For stdio mode, use docker run -i instead of compose up
+    # For HTTP mode, this compose file works out of the box
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
