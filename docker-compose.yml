@@ -1,8 +1,10 @@
+version: "3.8"
+
 services:
-  mcp-searxng-enhanced:
+  mcp-searxng-enhanced-http:
     build: .
-    image: mcp-searxng-pdf2md
-    container_name: mcp-searxng
+    image: mcp-searxng-pdf2md-http
+    container_name: mcp-searxng-http
     ports:
       - "8000:8000"
     stdin_open: true
