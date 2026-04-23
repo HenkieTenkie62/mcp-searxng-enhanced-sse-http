@@ -625,7 +625,7 @@ def run_http():
     logger.info(f"Starting MCP server with streamable-http on http://{host}:{port}{path}")
     mcp.settings.streamable_http_path = path
     app = mcp.streamable_http_app()
-    uvicorn.run(app, host=host, port=port, log_level="info")
+    uvicorn.run(app, host=host, port=port, log_level="info", proxy_headers=True, forwarded_allow_ips="*")
 
 
 def run_both():
